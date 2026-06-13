@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Jarvis AI - Web Version</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0f0f0f;
+            color: #00ff00;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #jarvis-status {
+            color: #ff9900;
+            font-weight: bold;
+        }
+        #command-output {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 5px;
+            min-height: 100px;
+            margin: 20px 0;
+        }
+        button {
+            background: #0066ff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #0055dd;
+        }
+    </style>
+</head>
+<body>
+    <h1>Jarvis AI Assistant</h1>
+    <div id="jarvis-status">Initializing...</div>
+    <div id="command-output"></div>
+    <button id="start-btn">Start Listening</button>
+
+    <script>
+        // Constants
+        const MASTER = "Boss";
+        const outputDiv = document.getElementById('command-output');
+        const statusDiv = document.getElementById('jarvis-status');
+
+        // Initialize speech synthesis (text-to-speech)
+        const synth = window.speechSynthesis;
+
+        // FIX 1: Removed the duplicate speak() function.
+        // There were two identical copies before - only one is needed.
+        function speak(text) {
+            outputDiv.innerHTML += `<p>Jarvis: ${text}</p>`;
+            const utterance = new SpeechSynthesisUtterance(text);
+            synth.speak(utterance);
+        }
+
+        // Wish me function (time-based greeting)
+        function wishMe() {
+            const hour = new Date().getHours();
+            let greeting;
+
+            if (hour >= 0 && hour < 12) greeting = `Good Morning ${MASTER}`;
+            else if (hour >= 12 && hour < 18) greeting = `Good Afternoon ${MASTER}`;
+            else greeting = `Good Evening ${MASTER}`;
+
+            speak(greeting);
+            speak("I am Jarvis. A Voice Assistant AI. How may I help you?");
+        }
+
+        // Voice recognition (replaces speech_recognition)
+        function takeCommand() {
+            return new Promise((resolve) => {
+                const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+                recognition.lang = 'en-US';
+                recognition.interimResults = false;
+
+                recognition.onresult = (event) => {
+                    const query = event.results[0][0].transcript;
+                    outputDiv.innerHTML += `<p>You: ${query}</p>`;
+
+                    // FIX 2: Call resolve() here instead of processCommand().
+                    // This is what actually completes the Promise so that
+                    // "await takeCommand()" in main() receives the result.
+                    resolve(query.toLowerCase());
+                };
+
+                recognition.onerror = (event) => {
+                    speak("Sorry, I didn't catch that");
+                    // FIX 3: Don't call recognition.start() here again -
+                    // the recognition object may already be running/starting,
+                    // which causes "InvalidStateError: already started".
+                    // Instead, resolve with an empty string. main() will
+                    // loop back to takeCommand(), which creates a FRESH
+                    // recognition object each time - safe to start.
+                    resolve("");
+                };
+
+                recognition.start();
+                statusDiv.textContent = "Listening...";
+            });
+        }
+
+        // Process commands (main logic)
+        async function processCommand(query) {
+            // FIX 4: Return true (keep listening) instead of undefined
+            // when query is empty - otherwise the main() loop stops
+            // after any misheard/empty command.
+            if (!query) return true;
+
+            // FIX 6: Check 'wikipedia' BEFORE 'search'.
+            // A phrase like "search ejae in wikipedia" contains both words -
+            // if 'search' is checked first, it always wins and Wikipedia
+            // is never reached. Wikipedia is the more specific command,
+            // so it must be checked first.
+            if (query.includes('wikipedia')) {
+                const topic = query.replace('search', '').replace('wikipedia', '').replace(' in ', '').trim();
+                speak(`Searching Wikipedia for ${topic}`);
+                try {
+                    const response = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(topic)}`);
+                    const data = await response.json();
+                    if (data.extract) {
+                        const sentences = data.extract.match(/[^.!?]+[.!?]+/g) || [data.extract];
+                        const twoSentences = sentences.slice(0, 2).join(' ');
+                        speak(twoSentences);
+                    } else {
+                        speak("No information found");
+                    }
+                } catch {
+                    speak("Sorry, I couldn't fetch Wikipedia results");
+                }
+            }
+            // Web searches
+            else if (query.includes('search')) {
+                const searchQuery = query.split('search')[1].trim();
+                window.open(`https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`);
+                speak(`Searching for ${searchQuery} on Google`);
+            }
+            // Open websites
+            else if (query.includes('open')) {
+                const site = query.split('open')[1].trim();
+                const sites = {
+                    'google': 'https://google.com',
+                    'youtube': 'https://youtube.com',
+                    'maps': 'https://google.com/maps',
+                    'gmail': 'https://mail.google.com',
+                    'facebook': 'https://facebook.com',
+                    'twitter': 'https://twitter.com',
+                    'instagram': 'https://instagram.com',
+                    'w3schools': 'https://w3schools.com',
+                    'stackoverflow': 'https://stackoverflow.com'
+                };
+
+                if (sites[site]) {
+                    window.open(sites[site]);
+                    speak(`Opening ${site}`);
+                } else {
+                    speak(`I don't know how to open ${site}`);
+                }
+            }
+            // Time
+            else if (query.includes('time')) {
+                const time = new Date().toLocaleTimeString();
+                speak(`The time is ${time}`);
+            }
+            // About
+            else if (query.includes('who are you')) {
+                speak("I'm Jarvis, a voice assistant AI created by Arman Forouharfard");
+            }
+            // Exit
+            else if (query.includes('thank you') || query.includes('goodbye')) {
+                speak(query.includes('thank you') ? "You're welcome!" : "Goodbye!");
+                return false; // Stop listening
+            }
+            // Unknown command
+            else {
+                speak("I didn't understand that command");
+            }
+            return true; // Continue listening
+        }
+
+        // Main function
+        async function main() {
+            statusDiv.textContent = "Jarvis Ready";
+            wishMe();
+
+            document.getElementById('start-btn').addEventListener('click', async () => {
+                let keepRunning = true;
+                while (keepRunning) {
+                    const query = await takeCommand();
+                    keepRunning = await processCommand(query);
+                }
+            });
+        }
+
+        // Initialize
+        window.onload = main;
+    </script>
+</body>
+</html>
