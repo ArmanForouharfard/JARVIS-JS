@@ -4,7 +4,7 @@ A voice-controlled AI assistant, ported from my original Python project
 to JavaScript so it can run directly in the browser.
 
 ## 🔗 Live Demo
-[Try JARVIS]()
+[Try JARVIS](https://armanforouharfard.github.io/JARVIS-JS/index.html)
 
 > ⚠️ Requires Chrome or Edge (uses the Web Speech API). 
 > Click "Start Listening" and allow microphone access.
